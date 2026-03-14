@@ -1,0 +1,64 @@
+FRN,Provider ID,holding_company,Provider Name,Holding Company,Operation Type
+1584960,130029,Alaska Power & Telephone Company,Alaska Telephone Company,"Alaska Power & Telephone, Inc.",ILEC
+1772888,130068,West Kentucky Rural Telephone Cooperative Corp. Inc.,Ardmore Telephone Company Inc,"Synergy Technology Partners, inc.",ILEC
+1775295,131378,"Future Fiber FinCo, LLC",Brindlee Mountain Telephone LLC,Otelco Inc.,ILEC
+1792621,130068,West Kentucky Rural Telephone Cooperative Corp. Inc.,"West Kentucky Rural Telephone Cooperative Corp., Inc. Corp Inc","Synergy Technology Partners, inc.",ILEC
+3007481,130619,The Chillicothe Telephone Co,The Chillicothe Telephone Co,"Horizon Telcom, Inc.",ILEC
+3412871,131378,"Future Fiber FinCo, LLC","Trumansburg  Telephone Company, Inc.",Otelco Inc.,ILEC
+3713906,131378,"Future Fiber FinCo, LLC",CRC Communications LLC,Otelco Inc.,Non-ILEC
+3731791,131378,"Future Fiber FinCo, LLC",Granby Telephone LLC,Otelco Inc.,ILEC
+3745734,300191,"Trailblazer Holdco, LLC","North State Telephone, LLC",Gridiron Fiber Corporation,ILEC
+3767639,131310,"Telephone and Data Systems, Inc.","TDS METROCOM, LLC","Telephone & Data Systems, incl. UScellular",Non-ILEC
+3775244,300191,"Trailblazer Holdco, LLC",Lumos Telephone of Botetourt LLC,Gridiron Fiber Corporation,ILEC
+3800117,130029,Alaska Power & Telephone Company,"AP&T Wireless, Inc.","Alaska Power & Telephone, Inc.",Non-ILEC
+4315362,131378,"Future Fiber FinCo, LLC","Ontario Telephone Company, Inc.",Otelco Inc.,ILEC
+4339933,220001,PTI Pacifica Inc.,PTI Pacifica Inc.,Pacific Telecom Inc.,Non-ILEC
+4350252,220001,PTI Pacifica Inc.,Micronesian Telecomm. Corp,Pacific Telecom Inc.,ILEC
+4372322,131310,"Telephone and Data Systems, Inc.",UNITED STATES CELLULAR CORPORATION,"Telephone & Data Systems, incl. UScellular",Non-ILEC
+4948105,131310,"Telephone and Data Systems, Inc.",TDS TELECOMMUNICATIONS LLC,"Telephone & Data Systems, incl. UScellular",ILEC
+4997516,131378,"Future Fiber FinCo, LLC",Pine Tree Telephone LLC,Otelco Inc.,ILEC
+5057328,131378,"Future Fiber FinCo, LLC",War Telephone LLC,Otelco Inc.,ILEC
+5555925,131378,"Future Fiber FinCo, LLC",Saco River Telephone LLC,Otelco Inc.,ILEC
+6925440,131378,"Future Fiber FinCo, LLC",Blountsville Telephone LLC,Otelco Inc.,ILEC
+7494776,130335,"Fidium Holdings, LLC","Consolidated Communications Holdings, Inc.","Consolidated Communications, Inc.",ILEC
+7649882,190308,Cable TV of East Alabama,"R.M.Greene,Inc.","R. M. Greene, Inc.",Non-ILEC
+8702433,131378,"Future Fiber FinCo, LLC",Hopper Telecommunications LLC,Otelco Inc.,ILEC
+9405531,130030,"Covington Electric Cooperative, Inc.","AlaWeb, Inc","AlaWeb, Inc.",Non-ILEC
+11563277,290065,ISP Industries LLC,LasVegas.Net,LV.Net LLC,Non-ILEC
+11581931,131378,"Future Fiber FinCo, LLC",Finger Lakes Communications Group Inc.,Otelco Inc.,Non-ILEC
+12361036,470021,"Concho Valley Electric Cooperative, Inc.",Concho Valley Electric Coop. Inc.,Concho Valley Electric Coop. Inc.,Non-ILEC
+12369286,130627,EchoStar Corporation,"HNS License Sub, LLC","Hughes Network Systems, LLC",Non-ILEC
+15683816,160160,Hawkeye Topco Holdings LLC,"ImOn Communications, LLC","ImOn Communications, LLC",Non-ILEC
+17225723,131378,"Future Fiber FinCo, LLC",Mid-Maine Telecom LLC,Otelco Inc.,ILEC
+18424440,300191,"Trailblazer Holdco, LLC","North State Communications Advanced Services, LLC",Gridiron Fiber Corporation,Non-ILEC
+18538496,131378,"Future Fiber FinCo, LLC",Otelco Mid-Missouri LLC,Otelco Inc.,ILEC
+18538512,131378,"Future Fiber FinCo, LLC",Otelco Telephone LLC,Otelco Inc.,ILEC
+18540237,190134,"Electric Power Board of Chattanooga, Tennessee",Electric Power Board of Chattanooga,"Electric Power Board of Chattanooga,Tennessee",Non-ILEC
+18809327,480020,"City of Sylvester, Georgia",City of Sylvester,"City of Sylvester, GA",Non-ILEC
+19491562,131378,"Future Fiber FinCo, LLC",I-Land Internet Services LLC,Otelco Inc.,Non-ILEC
+20176699,300057,"Fatbeam Holdings, LLC","Fatbeam, LLC","SDC FB Holdings, LLC",Non-ILEC
+20680948,260010,"MiFiber Holding, LLC","CONCEPT COMMUNICATIONS, LLC",Concept Communication Corp.,Non-ILEC
+20820189,131378,"Future Fiber FinCo, LLC",Shoreham Telephone LLC,Otelco Inc.,ILEC
+21454806,131378,"Future Fiber FinCo, LLC",Mid-Maine TelPlus LLC,Otelco Inc.,Non-ILEC
+22516330,131310,"Telephone and Data Systems, Inc.",TDS BROADBAND SERVICE LLC,"Telephone & Data Systems, incl. UScellular",Non-ILEC
+23027618,290121,Wificow Wyoming Corporation,"The Tahlequah, LLC","The Tahlequah, LLC",Non-ILEC
+24026304,410157,"NETworx Broadband, Inc.",SkyNet Broadband Inc,"SkyNet Broadband, Inc.",Non-ILEC
+24368151,300044,GI DI Vertigo Acquisition LLC,DQE Communications LLC,"Duquesne Light Holdings, Inc.",Non-ILEC
+26282459,350133,Grase Communications LLC,Grase Communications LLC dba MiWave,Grace Communications LLC,Non-ILEC
+26646661,131378,"Future Fiber FinCo, LLC",NetSpeed LLC,Otelco Inc.,Non-ILEC
+31672363,131207,"SmarterBroadband, LLC","SmarterBroadband, LLC","SmarterBroadband, Inc.",Non-ILEC
+31708613,460089,"VFN Holdings, Inc.","Vero Broadband, LLC","Vero Broadband, LLC",Non-ILEC
+32006249,450093,"Ripple Fiber, LLC",Ripple Fiber,"Open Fiber USA, Inc.",Non-ILEC
+32718827,460094,WiFicow Wyoming Corporation,WIFICOW WYOMING CORPORATION,Wificow Wyoming Corporation,Non-ILEC
+32784167,460073,Kempler Internet,Silicon Slopes Broadband,Silicon Slopes Broadband,Non-ILEC
+32821191,470055,NCI Datacom,"NCI Data.com, LLC","NCI Datacom, LLC",Non-ILEC
+33003211,200041,"Raw Bandwidth Communications, Inc.","Raw Bandwidth Communications, Inc.","Raw Bandwidth Telecom, Inc.",Non-ILEC
+33107137,260010,"MiFiber Holding, LLC","Wind Wireless, LLC",Concept Communication Corp.,Non-ILEC
+33167420,480093,"Town of Dryden, New York",Town of Dryden,"Town of Dryden, NY",Non-ILEC
+33182189,480043,Get Real II LLC,Get Real II LLC,Get Real Cable,Non-ILEC
+33246786,460568,"Maverix Broadband, Inc.","Maverix Broadband, Inc.",Maverix LLC,Non-ILEC
+33307901,470030,Boston Omaha Corporation,"Fiber Fast Homes, LLC",Boston Omaha,Non-ILEC
+33445198,131378,"Future Fiber FinCo, LLC","Netspeed Management, Inc.",Otelco Inc.,Non-ILEC
+33590407,340068,Skynet Country Inc.,Skynet Country Inc,"Skynet Country, LLC",Non-ILEC
+33889254,300191,"Trailblazer Holdco, LLC","Lumos Fiber of South Carolina, LLC",Gridiron Fiber Corporation,Non-ILEC
+35019199,490041,"Public Utility District #1 of Kitsap County, Washington",Public Utility District #1 of Kitsap County,Public Utility District #1 of Kitsap County,Non-ILEC
