@@ -208,3 +208,11 @@ __marimo__/
 
 ### Data files
 data/
+
+### Outputs
+output/CA_block_level_availability.csv
+output/IL_block_level_availability.csv
+output/GA_block_level_availability.csv
+output/NY_block_level_availability.csv
+output/TX_block_level_availability.csv
+output/all_states_block_level_availability.csv

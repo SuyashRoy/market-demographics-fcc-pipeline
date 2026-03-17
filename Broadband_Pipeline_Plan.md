@@ -80,11 +80,7 @@ Map the numeric technology codes to human-readable names. The FCC uses these cod
 |------|-----------|
 | 10 | Copper Wire (DSL) |
 | 40 | Cable (DOCSIS) |
-| 50 | Cable (Other) |
-| 60 | Fiber to the Premises (FTTP) |
-| 70 | Fiber (other, e.g., FTTN) |
-| 71 | Licensed Fixed Wireless |
-| 72 | Licensed-by-Rule Fixed Wireless |
+| 50 | Fiber to the Premises (FTTP) |
 | 0 | Other |
 
 (Check the FCC's data specification for the latest codes — they may have updated since this writing.)
@@ -199,11 +195,7 @@ CREATE TABLE technology_types (
 INSERT INTO technology_types VALUES
     (10, 'Copper Wire (DSL)'),
     (40, 'Cable (DOCSIS)'),
-    (50, 'Cable (Other)'),
-    (60, 'Fiber to the Premises'),
-    (70, 'Fiber (Other)'),
-    (71, 'Licensed Fixed Wireless'),
-    (72, 'Licensed-by-Rule Fixed Wireless'),
+    (50, 'Fiber to the Premises'),
     (0, 'Other');
 
 -- Provider summary table (optional, for quick provider info lookups)
