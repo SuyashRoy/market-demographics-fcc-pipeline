@@ -4,7 +4,7 @@
 
 Build an end-to-end platform that marries FCC Broadband Data Collection (BDC) provider-level fiber availability at the **census block (CB)** level with ACS demographic data to produce **hyperlocal, real-time fiber deployment forecasts**. Users query any geographic area and instantly receive an interactive map showing current fiber coverage, demographics, provider analytics, and ML-driven forecasts of future fiber builds.
 
-### What We Already Have (From Previous Project)
+### What We Already Have (From NetConnect-AI)
 
 - **FCC BDC data** already downloaded and processed at the CB level for **5 states**. This includes provider-level records with technology codes, download/upload speeds, and block GEOIDs.
 - **Demographics data** already downloaded — housing units and population at the CB level, and median household income (MHI) at the CBG level from ACS.
@@ -47,6 +47,20 @@ The CB-level counts come from the **2020 Decennial Census** (a full enumeration)
 **The solution:** When computing each CB's share within its parent CBG, always use the **rolled-up sum of CB values** as the denominator — not the CBG-reported ACS total. This guarantees that shares within every CBG sum to exactly 1.0.
 
 Additionally, the projection data provides **Housing Unit** counts (total units including vacant), not **Household** counts (occupied units only). Since MHI and the forecasting model operate on households, we must apply an **occupancy rate** conversion when rolling down housing projections.
+
+### FCC BDC Filing Timeline & Over-Reporting
+
+The FCC BDC data is available from **June 2022 onward**, with new filings published every **6 months** (June and December). The available filing periods are:
+
+```
+June 2022 → Dec 2022 → June 2023 → Dec 2023 → June 2024 → Dec 2024 → ...
+```
+
+**Over-reporting problem:** Providers are known to over-report their fiber coverage in BDC filings — claiming service availability in census blocks where fiber has not actually been deployed. This creates a specific data quality issue: a CB may show `has_fiber = 1` in one filing but `has_fiber = 0` in a subsequent filing. Since fiber infrastructure, once physically installed, does not get removed, any such disappearance is a clear signal of over-reporting, not service withdrawal.
+
+**Forward-persistence correction:** To clean the data, we apply a backward-looking rule from the latest filing: a CB's fiber flag should only be `1` at time `t` if it remains `1` in **all subsequent filings** through the most recent data. If fiber "appears" in an earlier filing but vanishes later, that earlier entry was over-reported and must be corrected to `0`. This is implemented in Phase 3 before computing any features.
+
+**12-month comparison windows:** For training label construction, 6-month windows are too noisy — fiber construction cycles typically run 12–18 months from permitting to lit service, and mid-cycle reporting artifacts create false positives. Instead, we compare filings **12 months apart** (June-to-June, December-to-December) when constructing the `gained_fiber` training labels. All 6-month snapshots are still retained as feature inputs — they provide valuable temporal resolution for features like `neighbor_fiber_pct` — but the labels are computed across year-over-year pairs only.
 
 ---
 
@@ -180,62 +194,92 @@ To convert projected Housing Units into projected Households, multiply by the **
 
 ## Phase 3: Provider & Fiber Feature Engineering
 
-**Goal:** Process the existing FCC BDC data to extract fiber presence, provider counts, major provider flags, and spatial neighbor features for each CB and filing period.
+**Goal:** Clean the FCC BDC fiber data for over-reporting artifacts, then extract fiber presence, provider counts, major provider flags, and spatial neighbor features for each CB and filing period.
 
 **Deliverable:** Jupyter Notebook `03_provider_features.ipynb`
 
 ### Notebook Instructions
 
-1. **Load the processed FCC BDC data** from the previous project. This should contain columns like `filing_period`, `provider_id`, `provider_name`, `technology_code`, `block_geoid` (15-digit CB FIPS), `max_download`, and `max_upload`. If multiple filing periods are available, ensure they are all loaded with a `filing_period` column distinguishing them.
+1. **Load the processed FCC BDC data** from the previous project. This should contain columns like `filing_period`, `provider_id`, `provider_name`, `technology_code`, `block_geoid` (15-digit CB FIPS), `max_download`, and `max_upload`. If multiple filing periods are available, ensure they are all loaded with a `filing_period` column distinguishing them. The available periods should span from June 2022 onward at 6-month intervals.
 
-2. **Compute fiber and provider features per CB per filing period.** Group by `filing_period` and `block_geoid` and compute:
-   - `has_fiber`: 1 if any record has `technology_code == 50`, else 0.
-   - `fiber_provider_count`: count of distinct `provider_id` where `technology_code == 50`.
-   - `total_provider_count`: count of distinct `provider_id` across all technologies.
-   - `max_fiber_down`: maximum download speed among fiber records.
-   - `max_fiber_up`: maximum upload speed among fiber records.
+2. **Compute the raw `has_fiber` flag per CB per period.** Before any correction, compute the raw fiber presence: for each `(filing_period, block_geoid)`, set `has_fiber_raw = 1` if any record has `technology_code == 50`, else `0`.
 
-3. **Define a major providers list.** Create a reference list of major ISPs (AT&T, Verizon, Lumen/CenturyLink, Comcast/Xfinity, Charter/Spectrum, Frontier, Cox, Google Fiber, Windstream, T-Mobile, etc.) with their FCC provider IDs. Verify these IDs against the actual data — provider IDs can vary between filings.
+3. **Apply the forward-persistence correction for over-reported fiber.** Providers are known to over-report fiber coverage. Since physical fiber infrastructure, once installed, does not get removed, a CB that shows fiber in an earlier filing but not in a later filing was almost certainly over-reported. Correct the data as follows:
 
-4. **Generate one-hot flags for major providers.** For each CB and filing period, create binary columns:
+   - For each CB, construct the full timeline of `has_fiber_raw` values across all filing periods, sorted chronologically (e.g., `[0, 1, 0, 1, 1, 1]` for June '22 through Dec '24).
+   - **Walk backward from the most recent filing.** Find the earliest period from which `has_fiber_raw = 1` persists **unbroken** through to the latest filing. This is the "true arrival" point.
+   - Set `has_fiber = 1` for that period and all subsequent periods. Set `has_fiber = 0` for all earlier periods, regardless of what the raw data says.
+   - **Example:** If a CB's raw timeline is `[0, 1, 0, 1, 1, 1]`:
+     - The raw `1` at period 2 (Dec '22) does NOT persist — it drops to `0` at period 3 (June '23). This was over-reported.
+     - The `1` at period 4 (Dec '23) persists through periods 5 and 6. The true arrival is period 4.
+     - Corrected timeline: `[0, 0, 0, 1, 1, 1]`.
+   - **Edge case:** If a CB shows fiber in the very latest filing only (e.g., `[0, 0, 0, 0, 0, 1]`), keep it as-is — there is no subsequent filing to confirm persistence. Accept this as provisionally correct but note that it will be validated when the next filing arrives.
+   - Print a summary of corrections: how many CB-period entries were flipped from `1` to `0`, what percentage of all fiber entries were corrected, and the distribution across filing periods.
+
+4. **Compute fiber and provider features per CB per filing period** using the **corrected** `has_fiber` flag. Group by `filing_period` and `block_geoid` and compute:
+   - `has_fiber`: the corrected binary flag (from step 3 above).
+   - `fiber_provider_count`: count of distinct `provider_id` where `technology_code == 50`. **Note:** After the persistence correction, if `has_fiber` was flipped to `0`, set `fiber_provider_count` to `0` as well for consistency, even if raw provider records exist for that period.
+   - `total_provider_count`: count of distinct `provider_id` across all technologies (this is unaffected by the fiber correction — providers may still offer non-fiber services).
+   - `max_fiber_down`: maximum download speed among fiber records (set to `NaN` or `0` if `has_fiber` was corrected to `0`).
+   - `max_fiber_up`: maximum upload speed among fiber records (same treatment).
+
+5. **Define a major providers list.** Create a reference list of major ISPs (AT&T, Verizon, Lumen/CenturyLink, Comcast/Xfinity, Charter/Spectrum, Frontier, Cox, Google Fiber, Windstream, T-Mobile, etc.) with their FCC provider IDs. Verify these IDs against the actual data — provider IDs can vary between filings.
+
+6. **Generate one-hot flags for major providers.** For each CB and filing period, create binary columns:
    - `{provider}_present`: 1 if that provider serves this CB with any technology, else 0.
-   - `{provider}_fiber`: 1 if that provider serves this CB specifically with fiber (tech code 50), else 0.
+   - `{provider}_fiber`: 1 if that provider serves this CB specifically with fiber (tech code 50), else 0. **Apply the same persistence correction logic per provider**: if the provider's fiber flag does not persist through to the latest filing, set it to `0` for the earlier periods.
    - This produces columns like `att_present`, `att_fiber`, `verizon_present`, `verizon_fiber`, etc.
 
-5. **Compute spatial neighbor features.** Load the adjacency table from Phase 1. For each CB and filing period, look up all its neighbors and compute:
-   - `neighbor_fiber_pct`: the fraction of neighboring CBs that have fiber (`has_fiber == 1`).
+7. **Compute spatial neighbor features.** Load the adjacency table from Phase 1. For each CB and filing period, look up all its neighbors and compute:
+   - `neighbor_fiber_pct`: the fraction of neighboring CBs that have fiber (`has_fiber == 1`, using the **corrected** flag).
    - `neighbor_count`: the number of adjacent CBs (useful as a control variable).
    - This is the "spatial contagion" signal — fiber tends to expand from existing footprints.
 
    **Implementation note:** This is a many-to-many join (each CB has multiple neighbors, each neighbor has a fiber status). The efficient approach is to merge the adjacency table with the fiber presence table, then group by `(filing_period, cb_fips)` and take the mean of neighbors' `has_fiber`.
 
-6. **Assemble the provider feature matrix.** Merge the fiber/provider features, major provider flags, and spatial features into a single DataFrame keyed on `(filing_period, cb_fips)`.
+8. **Assemble the provider feature matrix.** Merge the fiber/provider features, major provider flags, and spatial features into a single DataFrame keyed on `(filing_period, cb_fips)`.
 
-7. **Export** as `cb_provider_features.parquet`.
+9. **Export** as `cb_provider_features.parquet`.
 
 ---
 
 ## Phase 4: Full Feature Matrix & Training Labels
 
-**Goal:** Merge demographics and provider features into one unified matrix, construct the binary training labels from consecutive filing periods, and prepare the data for model training.
+**Goal:** Merge demographics and provider features into one unified matrix, construct the binary training labels using **12-month comparison windows** from the corrected fiber data, and prepare the data for model training.
 
 **Deliverable:** Jupyter Notebook `04_feature_matrix_and_labels.ipynb`
 
 ### Notebook Instructions
 
-1. **Load the demographics table** (`cb_demographics.parquet` from Phase 2) and the **provider features table** (`cb_provider_features.parquet` from Phase 3).
+1. **Load the demographics table** (`cb_demographics.parquet` from Phase 2) and the **provider features table** (`cb_provider_features.parquet` from Phase 3, which contains the forward-persistence-corrected fiber flags).
 
 2. **Merge into the full feature matrix.** Join on `cb_fips` (demographics is period-independent; provider features are per-period). The result should have one row per CB per filing period, with all demographic and provider columns.
 
-3. **Construct training labels.** The prediction target is binary: **did this CB gain fiber between filing period t and filing period t+1?** For each pair of consecutive filing periods:
-   - Filter to CBs that did **not** have fiber at time t (`has_fiber == 0`).
-   - Check whether those same CBs have fiber at time t+1.
-   - Label `gained_fiber = 1` if they went from no-fiber to fiber, `0` if they remained without fiber.
-   - Exclude CBs that already had fiber at time t — they are not part of the prediction problem.
+3. **Construct training labels using 12-month comparison windows.** The prediction target is binary: **did this CB gain fiber over a 12-month period?** Using 6-month windows is too noisy — fiber construction cycles run 12–18 months, and half-year snapshots capture mid-cycle reporting artifacts rather than genuine completions. Instead, compare filings that are **12 months apart**:
 
-4. **Concatenate all period-pair training sets** into a single DataFrame. Add columns for `train_period` (time t) and `label_period` (time t+1) so the model training script can implement temporal cross-validation.
+   - Pair June filings with June filings: June '22 → June '23, June '23 → June '24, etc.
+   - Pair December filings with December filings: Dec '22 → Dec '23, Dec '23 → Dec '24, etc.
+   - **Do not** pair June with December (6-month gaps) for label construction.
 
-5. **Print class distribution.** Report the number and percentage of positive examples (`gained_fiber == 1`) vs. negatives. This will likely be heavily imbalanced (< 5% positive). Document the imbalance ratio — it determines the `scale_pos_weight` parameter for XGBoost.
+   For each 12-month pair (time `t` and time `t+12mo`):
+   - Filter to CBs that did **not** have fiber at time t (`has_fiber == 0`, using the corrected flag).
+   - Check whether those same CBs have fiber at time t+12mo.
+   - Label `gained_fiber = 1` if they went from no-fiber to fiber over the 12-month window, `0` if they remained without fiber.
+   - Exclude CBs that already had fiber at time t — they are not prediction targets.
+
+   **Important:** The features for each training row come from time t. The label comes from comparing t to t+12mo. All 6-month filing snapshots are still retained in the feature matrix — they provide valuable temporal resolution for computing features like `neighbor_fiber_pct`. Only the **label pairs** use 12-month gaps.
+
+   **Example comparison pairs** (assuming data from June '22 through Dec '24):
+   ```
+   Features from June '22  →  Label: gained fiber by June '23?
+   Features from Dec '22   →  Label: gained fiber by Dec '23?
+   Features from June '23  →  Label: gained fiber by June '24?
+   Features from Dec '23   →  Label: gained fiber by Dec '24?
+   ```
+
+4. **Concatenate all 12-month-pair training sets** into a single DataFrame. Add columns for `train_period` (time t) and `label_period` (time t+12mo) so the model training script can implement temporal cross-validation.
+
+5. **Print class distribution.** Report the number and percentage of positive examples (`gained_fiber == 1`) vs. negatives. 12-month windows should produce a higher and more meaningful positive rate than 6-month windows. Document the imbalance ratio — it determines the `scale_pos_weight` parameter for XGBoost.
 
 6. **Handle missing values.** Identify columns with NaN values and decide on a strategy:
    - For density features: NaN where area is zero — fill with 0 or leave as NaN (XGBoost handles NaN natively).
@@ -246,7 +290,7 @@ To convert projected Housing Units into projected Households, multiply by the **
 
 8. **Export:**
    - `feature_matrix_full.parquet`: the complete merged matrix (all periods, all CBs).
-   - `training_data.parquet`: the labeled training set (only no-fiber CBs with a gain/no-gain label).
+   - `training_data.parquet`: the labeled training set (only no-fiber CBs with a gain/no-gain label, using 12-month pairs).
    - `feature_columns.json`: a JSON list of the feature column names.
 
 ---
@@ -474,8 +518,9 @@ frontend/
 | Pop projection rolldown | `proj_pop_cb = CBG_Pop_Proj × pop_share` | Two-step: project → allocate |
 | Housing density | `occupied_HH / area_sq_km` | Area from TIGER shapefiles (projected CRS) |
 | Population density | `total_pop / area_sq_km` | Same area source |
-| Neighbor fiber % | `mean(has_fiber) across adjacent CBs` | Adjacency from spatial touches predicate |
-| Prediction target | `y = 1 if CB gained fiber between period t and t+1` | Only for CBs without fiber at time t |
+| Fiber persistence correction | `has_fiber = 1 only if fiber persists through latest filing` | Corrects over-reporting; walk backward from latest |
+| Neighbor fiber % | `mean(has_fiber_corrected) across adjacent CBs` | Uses corrected fiber flags; adjacency from ST_Touches |
+| Prediction target | `y = 1 if CB gained fiber over 12-month window` | 12-mo pairs (Jun→Jun, Dec→Dec); corrected fiber flags |
 
 ## Notebook Dependency Chain
 
@@ -485,8 +530,8 @@ frontend/
 02_demographics_assembly.ipynb
     ↓ cb_demographics.parquet (includes MHI, shares, projections, densities)
 03_provider_features.ipynb  (also uses adjacency.parquet from 01)
-    ↓ cb_provider_features.parquet
-04_feature_matrix_and_labels.ipynb  (merges 02 + 03 outputs)
+    ↓ cb_provider_features.parquet (forward-persistence-corrected fiber flags)
+04_feature_matrix_and_labels.ipynb  (merges 02 + 03 outputs; 12-month label pairs)
     ↓ feature_matrix_full.parquet, training_data.parquet
 05_model_training.ipynb
     ↓ fiber_forecast_model.joblib, cb_predictions.parquet
