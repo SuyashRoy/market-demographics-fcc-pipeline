@@ -4,7 +4,7 @@
 
 Build an end-to-end platform that marries FCC Broadband Data Collection (BDC) provider-level fiber availability at the **census block (CB)** level with ACS demographic data to produce **hyperlocal, real-time fiber deployment forecasts**. Users query any geographic area and instantly receive an interactive map showing current fiber coverage, demographics, provider analytics, and ML-driven forecasts of future fiber builds.
 
-### What We Already Have (From NetConnect-AI)
+### What We Already Have (From Previous Project)
 
 - **FCC BDC data** already downloaded and processed at the CB level for **5 states**. This includes provider-level records with technology codes, download/upload speeds, and block GEOIDs.
 - **Demographics data** already downloaded — housing units and population at the CB level, and median household income (MHI) at the CBG level from ACS.
@@ -228,18 +228,33 @@ To convert projected Housing Units into projected Households, multiply by the **
 6. **Generate one-hot flags for major providers.** For each CB and filing period, create binary columns:
    - `{provider}_present`: 1 if that provider serves this CB with any technology, else 0.
    - `{provider}_fiber`: 1 if that provider serves this CB specifically with fiber (tech code 50), else 0. **Apply the same persistence correction logic per provider**: if the provider's fiber flag does not persist through to the latest filing, set it to `0` for the earlier periods.
-   - This produces columns like `att_present`, `att_fiber`, `verizon_present`, `verizon_fiber`, etc.
+   - This produces columns like `att_present`, `att_fiber`, `comcast_present`, `comcast_fiber`, `cox_present`, `cox_fiber`, `google_fiber_present`, `google_fiber_fiber`, `windstream_present`, `windstream_fiber`, `verizon_present`, `verizon_fiber`, `charter_present`, `charter_fiber`, `frontier_present`, `frontier_fiber`, `lumen_present`, `lumen_fiber`, `tmobile_present`, `tmobile_fiber`.
 
-7. **Compute spatial neighbor features.** Load the adjacency table from Phase 1. For each CB and filing period, look up all its neighbors and compute:
+7. **Compute competitive intensity features.** These derived features capture market dynamics beyond simple provider presence. For each CB and filing period, compute:
+
+   - `major_provider_count`: Count of major ISPs present in this CB (any technology). Sum all the `{provider}_present` flags. A CB with 4 major providers has fundamentally different competitive dynamics than one with 1.
+   - `major_fiber_count`: Count of major ISPs offering fiber in this CB. Sum all the `{provider}_fiber` flags.
+   - `fiber_competition_flag`: Binary — does this CB have **2 or more** fiber providers (from any provider, not just majors)? Set to 1 if `fiber_provider_count >= 2`, else 0. Distinguishes monopoly fiber markets from competitive ones.
+   - `hhi_broadband`: Herfindahl-Hirschman Index measuring broadband market concentration at the **CBG level**. For each CBG and filing period, compute each provider's market share as the fraction of CBs in the CBG that the provider serves. Then: `HHI = SUM(share_i^2) * 10000` (scaled to 0–10,000 range per standard convention). Lower HHI = more competitive market. Assign the CBG-level HHI to every CB within that CBG.
+     - HHI < 1,500 = competitive market
+     - HHI 1,500–2,500 = moderately concentrated
+     - HHI > 2,500 = highly concentrated
+   - `hhi_fiber`: Same HHI computation but restricted to **fiber providers only**. This isolates fiber-specific concentration. CBGs with only one fiber provider will have HHI = 10,000 (monopoly).
+   - `cbg_fiber_penetration`: The percentage of CBs within the same CBG that already have fiber (using corrected flags). Measures **local market maturity** — a CBG at 80% fiber is nearly saturated, one at 10% is early-stage. Computed by grouping the corrected `has_fiber` flag by CBG and taking the mean, then assigning back to each CB.
+   - `major_fiber_expansion_nearby`: Binary — has any major provider **newly added** fiber to an adjacent CB between the previous filing period and the current one? This captures **active expansion frontiers** from big players specifically. Computed by: for each adjacent CB, check if any major provider's `{provider}_fiber` flag went from 0 to 1 between the prior and current filing period. If any neighbor shows such an expansion, set to 1.
+
+   **Note on HHI computation:** The HHI is computed at the CBG level rather than the CB level because a single CB typically has only 1–3 providers, making a CB-level HHI uninformative. The CBG (which contains many CBs) provides a meaningful local market definition. This mirrors how antitrust regulators assess market concentration.
+
+8. **Compute spatial neighbor features.** Load the adjacency table from Phase 1. For each CB and filing period, look up all its neighbors and compute:
    - `neighbor_fiber_pct`: the fraction of neighboring CBs that have fiber (`has_fiber == 1`, using the **corrected** flag).
    - `neighbor_count`: the number of adjacent CBs (useful as a control variable).
    - This is the "spatial contagion" signal — fiber tends to expand from existing footprints.
 
    **Implementation note:** This is a many-to-many join (each CB has multiple neighbors, each neighbor has a fiber status). The efficient approach is to merge the adjacency table with the fiber presence table, then group by `(filing_period, cb_fips)` and take the mean of neighbors' `has_fiber`.
 
-8. **Assemble the provider feature matrix.** Merge the fiber/provider features, major provider flags, and spatial features into a single DataFrame keyed on `(filing_period, cb_fips)`.
+9. **Assemble the provider feature matrix.** Merge the fiber/provider features, major provider flags, competitive intensity features, and spatial features into a single DataFrame keyed on `(filing_period, cb_fips)`.
 
-9. **Export** as `cb_provider_features.parquet`.
+10. **Export** as `cb_provider_features.parquet`.
 
 ---
 
@@ -504,6 +519,195 @@ frontend/
 
 ---
 
+## Phase 9: Dockerization
+
+**Goal:** Containerize the entire project — both the data pipeline (notebooks) and the serving stack (PostGIS, Redis, FastAPI, frontend) — so the full platform can be stood up with a single command on any machine.
+
+**Deliverable:** Dockerfiles, docker-compose files, and supporting infrastructure scripts.
+
+**When to do this:** After the data pipeline, model, backend, and frontend are all working end-to-end locally. This phase packages what already works.
+
+### Repository Structure
+
+The agent should organize the repository as follows:
+
+```
+broadband-market-scanner/
+├── docker-compose.yml              # Serving stack (PostGIS, Redis, API, frontend)
+├── docker-compose.pipeline.yml     # Data pipeline (Jupyter + geo libraries)
+├── .env.example                    # Template for environment variables
+├── pipeline/
+│   ├── Dockerfile                  # Python 3.11 + GDAL + geo stack + Jupyter
+│   ├── requirements.txt            # geopandas, xgboost, shap, shapely, pyarrow, etc.
+│   └── notebooks/                  # The 5 Jupyter notebooks (01–05)
+├── backend/
+│   ├── Dockerfile                  # Python 3.11-slim + FastAPI + asyncpg
+│   ├── requirements.txt            # fastapi, uvicorn, asyncpg, sqlalchemy, redis, etc.
+│   └── app/                        # FastAPI application code
+├── frontend/
+│   ├── Dockerfile                  # Multi-stage: Node build → nginx serve
+│   ├── nginx.conf                  # Nginx config for SPA routing
+│   └── src/                        # React application code
+├── infra/
+│   ├── init-db.sql                 # PostGIS extensions, schemas, materialized view DDL
+│   ├── load-data.sh                # Script to load parquet outputs into PostGIS tables
+│   └── seed-cache.sh               # Optional: pre-warm Redis with top metro bboxes
+└── data/
+    ├── raw/                        # Raw downloaded data (gitignored, mounted as volume)
+    ├── intermediate/               # Parquet outputs from notebooks (gitignored)
+    └── models/                     # Trained model files (gitignored)
+```
+
+### What the Agent Needs to Build
+
+1. **Pipeline Dockerfile (`pipeline/Dockerfile`).** Build an image that contains Python 3.11, GDAL, PROJ, geopandas, shapely, xgboost, shap, scikit-learn, pyarrow, jupyterlab, and all other dependencies needed to run the 5 notebooks. GDAL and the geospatial C libraries are the tricky part — use `continuumio/miniconda3` or `osgeo/gdal` as a base image to avoid manual compilation. The Dockerfile should install the Python requirements on top and expose JupyterLab on port 8888.
+
+2. **Backend Dockerfile (`backend/Dockerfile`).** Use `python:3.11-slim` as the base. Install the FastAPI requirements. Copy the application code. Run uvicorn with the appropriate number of workers (use `--workers 4` for production, `--reload` for development). Expose port 8000.
+
+3. **Frontend Dockerfile (`frontend/Dockerfile`).** Use a multi-stage build:
+   - **Stage 1 (build):** Use `node:20-alpine`. Copy package.json, install dependencies, copy source, and run `npm run build` to produce static assets.
+   - **Stage 2 (serve):** Use `nginx:alpine`. Copy the build output from stage 1 into nginx's html directory. Copy a custom `nginx.conf` that handles SPA routing (all non-file routes serve `index.html`). Expose port 80.
+
+4. **Serving stack Docker Compose (`docker-compose.yml`).** This is the production-like compose file that runs the full serving platform. It should define these services:
+
+   - **`db`** — `postgis/postgis:16-3.4` image. Mount a named volume for data persistence. Run `infra/init-db.sql` on first startup (via docker-entrypoint-initdb.d). Expose port 5432 (for development access; remove in production). Environment variables for `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`.
+   - **`redis`** — `redis:7-alpine` image. Command: `redis-server --maxmemory 512mb --maxmemory-policy allkeys-lru`. Expose port 6379.
+   - **`api`** — Build from `backend/Dockerfile`. Environment variables: `DATABASE_URL=postgresql+asyncpg://...@db/fiber_forecast`, `REDIS_URL=redis://redis:6379/0`. Depends on `db` and `redis`. Expose port 8000.
+   - **`frontend`** — Build from `frontend/Dockerfile`. Depends on `api`. Expose port 80.
+   - **`tileserv`** (optional) — `pramsey/pg_tileserv` image. Environment: `DATABASE_URL=postgresql://...@db/fiber_forecast`. Depends on `db`. Expose port 7800.
+   - Define a named volume `pgdata` for PostGIS persistence.
+   - Define a bridge network so all services can communicate by service name.
+
+5. **Pipeline Docker Compose (`docker-compose.pipeline.yml`).** A separate compose file for running the data pipeline. It should define:
+
+   - **`jupyter`** — Build from `pipeline/Dockerfile`. Mount `./data` as a volume so notebooks can read raw data and write intermediate outputs. Mount `./pipeline/notebooks` so notebook edits persist. Expose port 8888. Optionally connect to the same Docker network as the serving stack so notebooks can write directly to PostGIS after processing.
+   - Usage: `docker compose -f docker-compose.pipeline.yml up` to start JupyterLab, run notebooks manually or programmatically, then `docker compose -f docker-compose.pipeline.yml down` when done.
+
+6. **Database initialization script (`infra/init-db.sql`).** This runs automatically on first PostGIS container startup. It should create the PostGIS extension, create the schemas (`geo`, `analytics`), and create placeholder tables that the data loading script will populate. It should also define the materialized view DDL (which will be populated after data is loaded).
+
+7. **Data loading script (`infra/load-data.sh`).** A bash script that loads the parquet outputs from the `data/intermediate/` directory into PostGIS tables. It should use `ogr2ogr` for the GeoParquet geometry file and a Python helper (or `psql` with `COPY`) for the flat parquet files. After loading, it should run `REFRESH MATERIALIZED VIEW` and print a summary of loaded row counts. This script is run once after the notebooks complete, either manually or as part of the data refresh pipeline.
+
+8. **Environment variable template (`.env.example`).** Document all required environment variables: `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `REDIS_URL`, `MAPBOX_TOKEN`, `API_BASE_URL`. Users copy this to `.env` and fill in their values.
+
+### Running the Full Stack
+
+Document the following workflow in a README:
+
+```bash
+# 1. Run the data pipeline (notebooks)
+docker compose -f docker-compose.pipeline.yml up
+# → Open http://localhost:8888, run notebooks 01–05 in order
+# → Outputs land in ./data/intermediate/ and ./data/models/
+
+# 2. Start the serving stack
+docker compose up -d
+
+# 3. Load processed data into PostGIS
+docker compose exec api bash /app/infra/load-data.sh
+
+# 4. Access the platform
+# → Frontend: http://localhost
+# → API docs: http://localhost:8000/docs
+# → Tile server: http://localhost:7800
+```
+
+---
+
+## Phase 10: CI/CD Pipeline
+
+**Goal:** Automate testing, image building, and deployment via GitHub Actions. Set up two distinct pipelines — one for code changes (every push) and one for data refreshes (biannual FCC filings).
+
+**Deliverable:** GitHub Actions workflow files in `.github/workflows/`.
+
+**When to do this:** After Phase 9 (Dockerization) is complete and the serving stack runs reliably via Docker Compose.
+
+### What the Agent Needs to Build
+
+1. **Code CI/CD workflow (`.github/workflows/ci.yml`).** This runs on every push to `main` and on every pull request. It should contain the following stages:
+
+   **Stage 1 — Lint & Type Check:**
+   - Run `ruff` or `flake8` on the backend Python code.
+   - Run `eslint` on the frontend TypeScript/JavaScript code.
+   - Run `mypy` on the backend if type hints are used.
+   - Fail the PR if any linting errors are found.
+
+   **Stage 2 — Backend Tests:**
+   - Set up a PostgreSQL + PostGIS service container (GitHub Actions supports service containers).
+   - Install backend Python dependencies.
+   - Run pytest on the FastAPI test suite. Tests should cover:
+     - API endpoint response formats (mock a small PostGIS dataset with a few CBs).
+     - Bounding box parsing and validation.
+     - Cache key generation logic.
+     - Summary aggregation math (fiber percentages, weighted MHI).
+   - Report test coverage.
+
+   **Stage 3 — Frontend Tests:**
+   - Install Node dependencies.
+   - Run `npm test` (Jest/Vitest for component tests).
+   - Run `npm run build` to verify the production build succeeds.
+
+   **Stage 4 — Build & Push Docker Images (only on merge to `main`):**
+   - Build the backend, frontend, and pipeline Docker images.
+   - Tag images with the git SHA and `latest`.
+   - Push to a container registry (GitHub Container Registry `ghcr.io` is the simplest — free for public repos, no external account needed).
+   - This step should be skipped on PRs — only run on merge to main.
+
+   **Stage 5 — Deploy to Staging (only on merge to `main`):**
+   - SSH into the staging server (or trigger a deployment via your hosting platform's API).
+   - Pull the new images.
+   - Run `docker compose pull && docker compose up -d` to update the running services.
+   - Run a quick smoke test: hit the `/api/v1/area/summary` endpoint with a known bounding box and verify the response structure.
+
+   **Stage 6 — Deploy to Production (only on release tag):**
+   - Triggered when a GitHub Release is published (e.g., `v1.0.0`).
+   - Same as staging deployment but targeting the production server.
+   - Tag the Docker images with the release version in addition to the SHA.
+
+2. **Data refresh workflow (`.github/workflows/data-refresh.yml`).** This is triggered **manually** via `workflow_dispatch` (a button in the GitHub Actions UI) or on a cron schedule aligned with FCC filing releases (approximately January and July). It should contain the following stages:
+
+   **Stage 1 — Download New FCC Data:**
+   - Pull the latest FCC BDC filing from the FCC data download portal.
+   - Validate the download (check file sizes, row counts, expected columns).
+   - Store in the data directory (or an S3 bucket if using cloud storage).
+
+   **Stage 2 — Run Feature Engineering (Notebooks 03–05):**
+   - Spin up the pipeline Docker container.
+   - Execute notebooks 03 (provider features with forward-persistence correction on the expanded timeline), 04 (feature matrix with new 12-month label pairs), and 05 (retrain model with expanded training data, batch score).
+   - Notebooks 01 and 02 are **not** rerun because shapefiles and demographics don't change with each FCC filing. Only rerun these if new Census data is released.
+   - Use `papermill` or `nbconvert --execute` to run notebooks programmatically without manual intervention.
+   - Validate outputs: check that parquet files are produced, row counts are reasonable, model AUC-PR meets a minimum threshold (fail the pipeline if the model degrades significantly).
+
+   **Stage 3 — Load into PostGIS:**
+   - Run the `infra/load-data.sh` script against the serving stack's PostGIS instance.
+   - Refresh the materialized view.
+   - Verify row counts in the refreshed view match expectations.
+
+   **Stage 4 — Flush Cache & Smoke Test:**
+   - Flush the Redis cache (`FLUSHDB`).
+   - Hit the API with a set of known bounding boxes and verify response structure and non-zero data.
+   - Compare key metrics (total CBs with fiber, national fiber percentage) against the previous filing to flag anomalies.
+
+   **Stage 5 — Notify:**
+   - Post a summary to Slack or email: new filing period loaded, model AUC-PR, total CBs processed, fiber coverage delta from previous filing, any warnings or anomalies.
+   - If any stage failed, send an alert with the failure details.
+
+3. **Workflow configuration files.** The agent should create:
+
+   - `.github/workflows/ci.yml` — the code CI/CD workflow.
+   - `.github/workflows/data-refresh.yml` — the data refresh workflow.
+   - A `Makefile` or `scripts/` directory with shortcut commands for local development: `make lint`, `make test`, `make build`, `make up`, `make down`, `make load-data`, `make refresh`.
+
+### Branch Strategy
+
+Document the following branch strategy in the README:
+
+- **`main`** — stable, deployable code. All merges trigger Docker image builds and staging deployment.
+- **`develop`** — integration branch for feature work. PRs merge here first.
+- **Feature branches** — `feature/spatial-contagion`, `fix/cache-key-collision`, etc. Short-lived, PR into develop.
+- **Release tags** — `v1.0.0`, `v1.1.0`, etc. Trigger production deployment.
+
+---
+
 ## Quick Reference: Key Formulas
 
 | Operation | Formula | Notes |
@@ -519,6 +723,9 @@ frontend/
 | Housing density | `occupied_HH / area_sq_km` | Area from TIGER shapefiles (projected CRS) |
 | Population density | `total_pop / area_sq_km` | Same area source |
 | Fiber persistence correction | `has_fiber = 1 only if fiber persists through latest filing` | Corrects over-reporting; walk backward from latest |
+| HHI (broadband) | `SUM(share_i²) × 10000` at CBG level | <1500 competitive, 1500–2500 moderate, >2500 concentrated |
+| HHI (fiber) | Same formula, fiber providers only | Monopoly fiber = 10,000 |
+| CBG fiber penetration | `mean(has_fiber_corrected) across CBs in same CBG` | Local market maturity (0–100%) |
 | Neighbor fiber % | `mean(has_fiber_corrected) across adjacent CBs` | Uses corrected fiber flags; adjacency from ST_Touches |
 | Prediction target | `y = 1 if CB gained fiber over 12-month window` | 12-mo pairs (Jun→Jun, Dec→Dec); corrected fiber flags |
 
@@ -541,4 +748,8 @@ frontend/
     Phase 7: Frontend (consumes backend API)
         ↓
     Phase 8: Optimization & Deployment
+        ↓
+    Phase 9: Dockerization (containerize pipeline + serving stack)
+        ↓
+    Phase 10: CI/CD (GitHub Actions for code changes + data refreshes)
 ```

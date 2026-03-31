@@ -216,3 +216,12 @@ output/GA_block_level_availability.csv
 output/NY_block_level_availability.csv
 output/TX_block_level_availability.csv
 output/all_states_block_level_availability.csv
+
+output/adjacency.parquet
+output/all_states_block_level_availability_202206.csv
+output/all_states_block_level_availability_202306.csv
+output/all_states_block_level_availability_202406.csv
+output/area_sq_km.csv
+output/cb_demographics.csv
+output/cb_demographics.parquet
+output/geometry.geoparquet
