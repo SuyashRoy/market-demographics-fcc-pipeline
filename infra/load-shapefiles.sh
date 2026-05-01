@@ -15,16 +15,27 @@ TARGET="${SCHEMA}.${TABLE}"
 # Project root (script lives in infra/)
 PROJECT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 SHAPE_DIR="${PROJECT_DIR}/data/Shape Files"
+MI_DATA_DIR="${PROJECT_DIR}/data/MI"
 
 # State FIPS codes and names (parallel arrays for bash 3 compat)
-STATE_FIPS="06 13 17 36 48"
+STATE_FIPS="06 13 17 26 36 48"
 get_state_name() {
     case "$1" in
         06) echo "California" ;;
         13) echo "Georgia" ;;
         17) echo "Illinois" ;;
+        26) echo "Michigan" ;;
         36) echo "New York" ;;
         48) echo "Texas" ;;
+    esac
+}
+
+# Get shapefile directory for a given FIPS code
+# MI shapefile lives in data/MI/, others in data/Shape Files/
+get_shp_dir() {
+    case "$1" in
+        26) echo "${MI_DATA_DIR}/tl_2025_${1}_tabblock20" ;;
+        *)  echo "${SHAPE_DIR}/tl_2025_${1}_tabblock20" ;;
     esac
 }
 
@@ -38,7 +49,7 @@ TOTAL_LOADED=0
 
 for FIPS in $STATE_FIPS; do
     STATE_NAME="$(get_state_name "$FIPS")"
-    SHP_DIR="${SHAPE_DIR}/tl_2025_${FIPS}_tabblock20"
+    SHP_DIR="$(get_shp_dir "$FIPS")"
     SHP_FILE="${SHP_DIR}/tl_2025_${FIPS}_tabblock20.shp"
 
     if [ ! -f "$SHP_FILE" ]; then

@@ -14,6 +14,7 @@ SELECT
         WHEN '06' THEN 'California'
         WHEN '13' THEN 'Georgia'
         WHEN '17' THEN 'Illinois'
+        WHEN '26' THEN 'Michigan'
         WHEN '36' THEN 'New York'
         WHEN '48' THEN 'Texas'
     END AS state_name,
