@@ -226,3 +226,4 @@ output/cb_demographics.csv
 output/cb_demographics.parquet
 output/geometry.geoparquet
 output/all_states_block_level_availability_202506.csv
+MI_block_level_availability.csv
